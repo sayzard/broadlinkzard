@@ -21,7 +21,8 @@ type BroadlinkDeviceInterface interface {
 	Auth() (bool, error)
 	SetLogLevel(int)
 
-	SetPower(bool) (bool, error)
+  SetPower(bool) (bool, error)
+  QueryPower() (bool, error)
 }
 
 // BroadlinkDevice : Device Structure
@@ -153,9 +154,14 @@ func (dev *BroadlinkDevice) SetPower(bool) (bool, error) {
 	return false, errors.New("Not supported")
 }
 
+// QueryPower : Dummy Query Power
+func (dev *BroadlinkDevice) QueryPower() (bool, error) {
+	return false, errors.New("Not supported")
+}
+
 // SetPower : On/Off Power Control
 func (dev *BroadlinkDeviceSp2) SetPower(onstate bool) (bool, error) {
-	payload := make([]byte, 8)
+	payload := make([]byte, 16)
 	payload[0] = 2
 	if onstate {
 		payload[4] = 1
@@ -163,7 +169,32 @@ func (dev *BroadlinkDeviceSp2) SetPower(onstate bool) (bool, error) {
 		payload[4] = 0
 	}
 	dev.LogMessage(5, fmt.Sprintln("PAYLOAD=", hex.Dump(payload)))
-	return dev.SendPacket(0x6a, payload)
+  _, err := dev.SendPacket(0x6a, payload)
+  if err != nil {
+    return false, err
+  }
+  return true,nil
+}
+
+// QueryPower : Query Power
+func (dev *BroadlinkDeviceSp2) QueryPower() (bool, error) {
+	payload := make([]byte, 16)
+	payload[0] = 1
+	dev.LogMessage(5, fmt.Sprintln("PAYLOAD=", hex.Dump(payload)))
+  resp, err := dev.SendPacket(0x6a, payload)
+  if err != nil {
+    return false, err
+  }
+  ierr := binary.LittleEndian.Uint16(resp[0x22:])
+  dev.LogMessage(10,fmt.Sprintln("RESP=",resp[0x22],resp[0x23],ierr))
+  if ierr !=0 {
+    return false, fmt.Errorf("Response %x",ierr)
+  }
+  dpayload, _ := decrypt(dev.encKey, dev.encIv, resp[0x38:])  
+  if dpayload[0x4]==1 || dpayload[4]==3 || dpayload[4]==0xfd {
+    return true, nil
+  }
+  return false,nil
 }
 
 //----
@@ -229,6 +260,19 @@ func decrypt(key []byte, iv []byte, encText []byte) ([]byte, error) {
 
 // -------
 
+// RecvResponse : Recv Response
+func (dev *BroadlinkDevice) RecvResponse(timeout time.Duration) ([]byte, error) {
+	for {
+		select {
+		case buf := <-dev.responses:
+      return buf, nil
+      
+		case <-time.After(timeout * time.Second):
+			return nil, errors.New("Timeout")
+		}
+	}
+}
+
 func (dev *BroadlinkDevice) wait4Response(expectedType uint16, timeout time.Duration) ([]byte, error) {
 	startTime := time.Now().Add(timeout * time.Second)
 	for {
@@ -249,8 +293,8 @@ func (dev *BroadlinkDevice) wait4Response(expectedType uint16, timeout time.Dura
 	}
 }
 
-// SendPacket : Send Packet
-func (dev *BroadlinkDevice) SendPacket(command uint16, payload []byte) (bool, error) {
+// RawSendPacket : Send Packet (W/O Response)
+func (dev *BroadlinkDevice) RawSendPacket(command uint16, payload []byte) (bool, error) {
 	dev.SendCount++
 
 	packet := make([]byte, 0x38)
@@ -274,9 +318,24 @@ func (dev *BroadlinkDevice) SendPacket(command uint16, payload []byte) (bool, er
 	dev.LogMessage(20, fmt.Sprintln(hex.Dump(packet)))
 
 	dev.CS.WriteToUDP(packet, dev.IPAddr)
-
 	return true, nil
 }
+
+// SendPacket : Send Packet
+func (dev *BroadlinkDevice) SendPacket(command uint16, payload []byte) ([]byte, error) {
+  _, err := dev.RawSendPacket(command,payload)
+  if err != nil {
+    return nil, err
+  }
+  dev.LogMessage(10,fmt.Sprintln("WAIT FOR RESP"))
+  resp, err := dev.RecvResponse(time.Duration(1))
+  dev.LogMessage(10,fmt.Sprintln("GOT RESP",err))
+  if err!= nil {
+    return nil,err
+  }
+	return resp, nil
+}
+
 
 // Auth : Authenticate
 func (dev *BroadlinkDevice) Auth() (bool, error) {
@@ -286,7 +345,7 @@ func (dev *BroadlinkDevice) Auth() (bool, error) {
 	hostname, _ := os.Hostname()
 	copy(payload[0x30:], []byte(hostname))
 
-	dev.SendPacket(0x65, payload)
+	dev.RawSendPacket(0x65, payload)
 
 	resp, err := dev.wait4Response(0x3e9, dev.TimeoutDefault)
 	if err != nil {
