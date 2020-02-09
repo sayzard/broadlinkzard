@@ -10,12 +10,13 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"time"
+  "time"
 )
 
 // BroadlinkDeviceInterface : Common Interface
 type BroadlinkDeviceInterface interface {
-	initVars()
+  initVars()
+  Close()
 	GetDevice() *BroadlinkDevice
 	Auth() (bool, error)
 	SetLogLevel(int)
@@ -113,11 +114,24 @@ func (dev *BroadlinkDevice) LogMessage(level int, message string) {
 	}
 }
 
+// Close : Close
+func (dev *BroadlinkDevice) Close() {
+  if dev.CS != nil {
+    dev.LogMessage(10,"Close\n")
+    dev.CS.Close()
+    dev.CS = nil
+  }
+}
+
 func (dev *BroadlinkDevice) udpListener() {
 	for {
 		buf := make([]byte, 2048)
-		count, _, err := dev.CS.ReadFrom(buf)
+    count, _, err := dev.CS.ReadFrom(buf)
+  
 		if err != nil {
+      if count == 0 {
+        break
+      }
 			continue
 		}
 
@@ -126,7 +140,7 @@ func (dev *BroadlinkDevice) udpListener() {
 			copy(response, buf)
 			dev.responses <- response
 		}
-	}
+  }
 }
 
 // GetDevice : Get Device Structure

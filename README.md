@@ -23,6 +23,7 @@ import (
 func main() {
 
   dev := broadlinkzard.NewBroadlinkDirectDevice(0x947a, "192.168.0.xxx", "34:ea:34:xx:xx:xx")
+  defer dev.Close()
   dev.SetLogLevel(0)
   _, err := dev.Auth()
   if err != nil {
