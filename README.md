@@ -1,6 +1,17 @@
 # Go library to work with Broadlink devices
 
-Power Control (SP2 or similar devices)
+#### Power Control (SP2 or similar devices)
+ - SP2 : 0x2711
+ - Honeywell SP2 : 0x2719, 0x7919, 0x271a, 0x791a 
+ - SPMini : 0x2720
+ - SP3 : 0x753e
+ - OEM branded SP3 : 0x7D00
+ - SP3S : 0x947a, 0x9479
+ - SPMini2 : 0x2728
+ - OEM branded SPMini : 0x2733, 0x273e
+ - OEM branded SPMini2 : 0x7530, 0x7546, 0x7918
+ - TMall OEM SPMini3 : 0x7D0D
+ - SPMiniPlus : 0x2736
 ```
 package main
 
