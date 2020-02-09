@@ -13,6 +13,7 @@ import (
 	"time"
 )
 
+// BroadlinkDeviceInterface : Common Interface
 type BroadlinkDeviceInterface interface {
 	initVars()
 	GetDevice() *BroadlinkDevice
@@ -22,10 +23,11 @@ type BroadlinkDeviceInterface interface {
 	SetPower(bool) (bool, error)
 }
 
+// BroadlinkDevice : Device Structure
 type BroadlinkDevice struct {
-	DevId     uint32
+	DevID     uint32
 	DevType   uint16
-	IpAddr    *net.UDPAddr
+	IPAddr    *net.UDPAddr
 	HwMac     [6]byte
 	bcastAddr *net.UDPAddr
 
@@ -43,13 +45,15 @@ type BroadlinkDevice struct {
 	BroadlinkDeviceInterface
 }
 
+// BroadlinkDeviceSp2 : Device Structure for SP2 or similar
 type BroadlinkDeviceSp2 struct {
 	BroadlinkDevice
 }
 
-func NewBroadlinkDirectDevice(iType uint16, sIp string, sMac string) BroadlinkDeviceInterface {
+// NewBroadlinkDirectDevice : Create Device Structure with Detail Information
+func NewBroadlinkDirectDevice(iType uint16, sIP string, sMac string) BroadlinkDeviceInterface {
 
-	sAddr, err := net.ResolveUDPAddr("udp", sIp+":80")
+	sAddr, err := net.ResolveUDPAddr("udp", sIP+":80")
 	if err != nil {
 		fmt.Println(err.Error())
 		return nil
@@ -60,10 +64,21 @@ func NewBroadlinkDirectDevice(iType uint16, sIp string, sMac string) BroadlinkDe
 		return nil
 	}
 	switch iType {
-	case 0x947A:
+	case
+		0x2711,                         // SP2
+		0x2719, 0x7919, 0x271a, 0x791a, // Honeywell SP2
+		0x2720,         // SPMini
+		0x753e,         // SP3
+		0x7D00,         // OEM branded SP3
+		0x947a, 0x9479, // SP3S
+		0x2728,         // SPMini2
+		0x2733, 0x273e, // OEM branded SPMini
+		0x7530, 0x7546, 0x7918, // OEM branded SPMini2
+		0x7D0D, // TMall OEM SPMini3
+		0x2736: //SPMiniPlus
 		var devsp2 BroadlinkDeviceSp2
 		devsp2.DevType = iType
-		devsp2.IpAddr = sAddr
+		devsp2.IPAddr = sAddr
 		copy(devsp2.HwMac[:], hwMac[:6])
 		devsp2.initVars()
 		return &devsp2
@@ -86,10 +101,12 @@ func (dev *BroadlinkDevice) initVars() {
 	go dev.udpListener()
 }
 
+// SetLogLevel : Set Loglevel
 func (dev *BroadlinkDevice) SetLogLevel(level int) {
 	dev.LogLevel = level
 }
 
+// LogMessage : Show Message
 func (dev *BroadlinkDevice) LogMessage(level int, message string) {
 	if dev.LogLevel >= level {
 		fmt.Print(message)
@@ -112,14 +129,17 @@ func (dev *BroadlinkDevice) udpListener() {
 	}
 }
 
+// GetDevice : Get Device Structure
 func (dev *BroadlinkDevice) GetDevice() *BroadlinkDevice {
 	return dev
 }
 
+// SetPower : Dummy Power Control
 func (dev *BroadlinkDevice) SetPower(bool) (bool, error) {
 	return false, errors.New("Not supported")
 }
 
+// SetPower : On/Off Power Control
 func (dev *BroadlinkDeviceSp2) SetPower(onstate bool) (bool, error) {
 	payload := make([]byte, 8)
 	payload[0] = 2
@@ -128,7 +148,7 @@ func (dev *BroadlinkDeviceSp2) SetPower(onstate bool) (bool, error) {
 	} else {
 		payload[4] = 0
 	}
-	dev.LogMessage(5,fmt.Sprintln("PAYLOAD=", hex.Dump(payload)))
+	dev.LogMessage(5, fmt.Sprintln("PAYLOAD=", hex.Dump(payload)))
 	return dev.SendPacket(0x6a, payload)
 }
 
@@ -195,7 +215,7 @@ func decrypt(key []byte, iv []byte, encText []byte) ([]byte, error) {
 
 // -------
 
-func (dev *BroadlinkDevice) wait4Response(expectedType uint16, timeout time.Duration) ([]byte,error) {
+func (dev *BroadlinkDevice) wait4Response(expectedType uint16, timeout time.Duration) ([]byte, error) {
 	startTime := time.Now().Add(timeout * time.Second)
 	for {
 		select {
@@ -215,6 +235,7 @@ func (dev *BroadlinkDevice) wait4Response(expectedType uint16, timeout time.Dura
 	}
 }
 
+// SendPacket : Send Packet
 func (dev *BroadlinkDevice) SendPacket(command uint16, payload []byte) (bool, error) {
 	dev.SendCount++
 
@@ -224,7 +245,7 @@ func (dev *BroadlinkDevice) SendPacket(command uint16, payload []byte) (bool, er
 	binary.LittleEndian.PutUint16(packet[0x26:], command)
 	binary.LittleEndian.PutUint16(packet[0x28:], dev.SendCount)
 	copy(packet[0x2a:], dev.HwMac[0:])
-	binary.LittleEndian.PutUint32(packet[0x30:], dev.DevId)
+	binary.LittleEndian.PutUint32(packet[0x30:], dev.DevID)
 
 	if (payload != nil) && (len(payload) > 0) {
 		payload = padding(payload, aes.BlockSize)
@@ -238,11 +259,12 @@ func (dev *BroadlinkDevice) SendPacket(command uint16, payload []byte) (bool, er
 	dev.LogMessage(20, fmt.Sprintln(hex.Dump(payload)))
 	dev.LogMessage(20, fmt.Sprintln(hex.Dump(packet)))
 
-	dev.CS.WriteToUDP(packet, dev.IpAddr)
+	dev.CS.WriteToUDP(packet, dev.IPAddr)
 
 	return true, nil
 }
 
+// Auth : Authenticate
 func (dev *BroadlinkDevice) Auth() (bool, error) {
 	payload := make([]byte, 0x50)
 	payload[0x2d] = 0x01
@@ -253,7 +275,7 @@ func (dev *BroadlinkDevice) Auth() (bool, error) {
 	dev.SendPacket(0x65, payload)
 
 	resp, err := dev.wait4Response(0x3e9, dev.TimeoutDefault)
-	if err!= nil {
+	if err != nil {
 		return false, err
 	}
 
@@ -261,9 +283,9 @@ func (dev *BroadlinkDevice) Auth() (bool, error) {
 		dev.LogMessage(10, fmt.Sprintln("RESPONSE"))
 		dev.LogMessage(10, fmt.Sprintln(hex.Dump(resp)))
 		decrypted, _ := decrypt(dev.encKey, dev.encIv, resp[0x38:])
-		dev.DevId = binary.LittleEndian.Uint32(decrypted[0x00:])
+		dev.DevID = binary.LittleEndian.Uint32(decrypted[0x00:])
 		dev.encKey = decrypted[0x04:0x14]
-		dev.LogMessage(2,fmt.Sprintln("Device Id=", dev.DevId))
+		dev.LogMessage(2, fmt.Sprintln("Device Id=", dev.DevID))
 	}
 	return true, nil
 }
