@@ -38,7 +38,7 @@ func main() {
 ```
 
 #### Power Control (MP1 or similar devices)
- - MP1 : 0x2711
+ - MP1 : 0x4EB5
  - Honyar oem mp1 : 0x4EF7
  ```
 package main
