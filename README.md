@@ -37,5 +37,38 @@ func main() {
 }
 ```
 
+#### Power Control (MP1 or similar devices)
+ - MP1 : 0x2711
+ - Honyar oem mp1 : 0x4EF7
+ ```
+package main
+
+import (
+  "fmt"
+  "github.com/sayzard/broadlinkzard"
+)
+
+func main() {
+
+  dev := broadlinkzard.NewBroadlinkDirectDevice(0x4EB5, "192.168.0.xxx", "34:ea:34:xx:xx:xx")
+  defer dev.Close()
+  dev.SetLogLevel(0)
+  _, err := dev.Auth()
+  if err != nil {
+    panic(err)
+  }
+  _, err = dev.SetPowerMulti(1,true) // on - true , off - false
+  if err != nil {
+    panic(err)
+  }
+  
+  pmask, err := dev.QueryPowerRaw()
+  if err != nil {
+    panic(err)
+  }
+  fmt.Println("Done",pmask)
+}
+```
+
 ### References
 * <https://github.com/mjg59/python-broadlink>
